@@ -142,11 +142,13 @@ public class ImporterTests
     }
 
     [Fact]
-    public void FilterForUnknownColumnFails()
+    public void FilterForUnknownColumnIsIgnoredLikeLegacy()
     {
         var o = ProductionLikeOptions(TestFiles.Fixture);
         o.Filters = ["noSuchColumn/Derivation?Format=1"];
-        Assert.ThrowsAny<ArgumentException>(() => new CsvImporter(o).OpenReader(out _).Dispose());
+        var rows = ReadAll(o, out _);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(DBNull.Value, rows[0]["dmicFileId"]);
     }
 
     [Fact]

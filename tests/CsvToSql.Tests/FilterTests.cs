@@ -69,7 +69,9 @@ public class FilterTests
     [Fact]
     public void TemplatesMixLiteralsFunctionsAndVariables()
     {
-        Assert.Equal("L7-B1-ABC", Apply("x/Derivation?Format=L$$linenumber-$batch-$$left(Code,3)", null));
+        Assert.Equal("L7_B1_ABC", Apply("x/Derivation?Format=L$$linenumber_$batch_$$left(Code,3)", null));
+        // As in the legacy tool, '-' and '.' are part of a function/variable name.
+        Assert.Equal("$$linenumber-", Apply("x/Derivation?Format=$$linenumber-", null));
         Assert.Equal("Smith", Apply("x/Derivation?Format=$1", null));
         Assert.Equal("ABC123Smith", Apply("x/Derivation?Format=$$concat(Code,Name)", null));
         Assert.Equal("2026-02-28", Apply("x/Derivation?Format=$$eomonth(Date)", null));

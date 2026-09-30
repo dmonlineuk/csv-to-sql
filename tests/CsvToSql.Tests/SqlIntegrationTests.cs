@@ -69,11 +69,12 @@ public class SqlIntegrationTests
             var d = Destination(table, "odd schema");
             var o = new ImportOptions { SourceFile = path, Sniff = true, ColumnsFromHeader = true, CamelCaseColumnNames = false, TrimValues = true, Sql = d };
             Assert.Equal(2, new CsvImporter(o).Run().RowsWritten);
+            // Square brackets are stripped from column names, as in the legacy tool.
             var quoted = "[odd schema].[" + table.Replace("]", "]]", StringComparison.Ordinal) + "]";
             Assert.Equal(new DateTime(2026, 2, 3), Scalar<DateTime>(d, $"SELECT [when] FROM {quoted} WHERE id = 2"));
-            Assert.Equal("a, b", Scalar<string>(d, $"SELECT [na]]me] FROM {quoted} WHERE id = 1"));
+            Assert.Equal("a, b", Scalar<string>(d, $"SELECT [name] FROM {quoted} WHERE id = 1"));
             Assert.Equal(1.5m, Scalar<decimal>(d, $"SELECT amount FROM {quoted} WHERE id = 1"));
-            Assert.Equal(1, Scalar<int>(d, $"SELECT COUNT(*) FROM {quoted} WHERE amount IS NULL AND [na]]me] IS NULL"));
+            Assert.Equal(1, Scalar<int>(d, $"SELECT COUNT(*) FROM {quoted} WHERE amount IS NULL AND [name] IS NULL"));
         }
         finally
         {

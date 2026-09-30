@@ -15,7 +15,8 @@ public class ProfilerTests
     [Theory]
     [InlineData("2026-09-29", typeof(DateTime))]
     [InlineData("29/09/2026", typeof(DateTime))]
-    [InlineData("20260929", typeof(int))]
+    [InlineData("20260929", typeof(DateTime))]
+    [InlineData("2026092", typeof(int))]
     [InlineData("1", typeof(byte))]
     [InlineData("300", typeof(short))]
     [InlineData("70000", typeof(int))]
@@ -140,7 +141,8 @@ public class ProfilerTests
         {
             Assert.True(SourceFile.IsGzip(path));
             var s = new CsvSniffer();
-            Assert.Equal(2, s.Sniff(path, 1, int.MaxValue, true));
+            s.Sniff(path, 1, int.MaxValue, true);
+            Assert.Equal(2, s.Results[0].RowsChecked);
             Assert.Equal(["x", "y"], s.Results.Select(r => r.Name));
         }
         finally
