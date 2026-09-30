@@ -148,4 +148,23 @@ public class CommandLineTests
         var o = OptionsMapper.Map(LegacyCommandLine.Parse(["-i", "a.csv", "-n", "--processing.variables", "{\"$batch\":\"42\"}"]));
         Assert.Equal("42", o.Variables["$batch"]);
     }
+
+    [Fact]
+    public void WarnsAboutBlankListValuesAndMissingSqlUsername()
+    {
+        var warnings = OptionsMapper.Warnings(LegacyCommandLine.Parse(
+            ["-i", "a.csv", "-s", "srv", "--processing.filters", "a/Derivation?Format=1", " "]));
+
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains("--processing.filters", warnings[0], StringComparison.Ordinal);
+        Assert.Contains("--dest.sql.auth.username", warnings[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProductionCommandLineHasOnlyTheBlankFilterWarning()
+    {
+        var warnings = OptionsMapper.Warnings(LegacyCommandLine.Parse(ProductionArgs));
+
+        Assert.Single(warnings);
+    }
 }

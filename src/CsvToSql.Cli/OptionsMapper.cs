@@ -21,6 +21,29 @@ public static class OptionsMapper
             cl.Switch("dest.return.rowcount"));
     }
 
+    /// <summary>Command line mistakes that are tolerated but likely unintended.</summary>
+    public static IReadOnlyList<string> Warnings(ParsedCommandLine cl)
+    {
+        ArgumentNullException.ThrowIfNull(cl);
+        var warnings = new List<string>();
+        foreach (var option in LegacyCommandLine.Options.Where(o => o.Kind == OptionKind.List && cl.Has(o.Name)))
+        {
+            if (cl.List(option.Name).Any(string.IsNullOrWhiteSpace))
+            {
+                warnings.Add(
+                    $"Ignored a blank value passed to --{option.Name}. If the command spans several lines, "
+                    + "check for a space after a trailing '\\': it ends the command and drops every option after it.");
+            }
+        }
+
+        if (cl.Has("dest.sql.server") && !cl.Has("dest.sql.auth.username"))
+        {
+            warnings.Add("No --dest.sql.auth.username given, so SQL authentication is not used.");
+        }
+
+        return warnings;
+    }
+
     public static ImportOptions Map(ParsedCommandLine cl, Func<string, string?>? environment = null)
     {
         ArgumentNullException.ThrowIfNull(cl);

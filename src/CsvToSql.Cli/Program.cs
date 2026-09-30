@@ -44,6 +44,11 @@ internal static class CliApp
             try
             {
                 var options = OptionsMapper.Map(cl);
+                foreach (var warning in OptionsMapper.Warnings(cl))
+                {
+                    log.Warn(warning);
+                }
+
                 log.Info($"Processing file {options.SourceFile}");
                 var result = new CsvImporter(options, log).Run();
                 if (options.DestNone && !options.ProfileOnly)
