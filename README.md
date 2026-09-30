@@ -41,7 +41,7 @@ CsvToDb -i "/path/file.csv" --processing.columns.fromHeader \
 ```
 
 `CsvToDb --help` lists every option. If `--dest.sql.auth.username` is given without `--dest.sql.auth.password`, the
-password is read from the `CSVTODB_SQL_PASSWORD` environment variable, which keeps it out of `ps` output.
+password is read from the `CSVTOSQL_SQL_PASSWORD` environment variable, which keeps it out of `ps` output.
 
 Exit codes: `0` success, `1` import failed (details on stderr / in the log), `2` invalid command line. With
 `--dest.return.rowcount` the exit code is the number of rows imported, as in the legacy tool.

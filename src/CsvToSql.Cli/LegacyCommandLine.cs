@@ -151,7 +151,7 @@ public static class LegacyCommandLine
         new("dest.sql.format.decimalSize", null, OptionKind.Value),
         new("dest.sql.format.unicode", null, OptionKind.Switch),
         new("dest.sql.auth.username", null, OptionKind.Value, Help: "SQL authentication login"),
-        new("dest.sql.auth.password", null, OptionKind.Value, Help: "SQL password (or set CSVTODB_SQL_PASSWORD)"),
+        new("dest.sql.auth.password", null, OptionKind.Value, Help: "SQL password (or set CSVTOSQL_SQL_PASSWORD)"),
         new("dest.sql.createImportLogEntry", null, OptionKind.Switch, false),
         new("dest.return.rowcount", null, OptionKind.Switch),
         new("measure.columns.sum", null, OptionKind.List, false),

@@ -9,7 +9,7 @@ public sealed record HostOptions(bool WaitForKeyPress, string? LogFilename, bool
 /// <summary>Maps the legacy command line onto <see cref="ImportOptions"/>.</summary>
 public static class OptionsMapper
 {
-    public const string PasswordEnvironmentVariable = "CSVTODB_SQL_PASSWORD";
+    public const string PasswordEnvironmentVariable = "CSVTOSQL_SQL_PASSWORD";
 
     public static HostOptions MapHost(ParsedCommandLine cl)
     {
