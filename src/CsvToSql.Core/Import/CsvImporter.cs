@@ -160,6 +160,10 @@ public sealed class CsvImporter(ImportOptions options, ImportLog? log = null)
                 {
                     DataProfileWriter.Write(options.ProfileFormat, sniffer.Results, sniffer.ProfilerTypes, options.TrimValues,
                         options.SourceFile, options.ProfileFilename!, options.Sql?.Server, options.Sql?.Database, options.Sql?.Schema, options.Sql?.Table);
+                    foreach (var column in sniffer.Results)
+                    {
+                        column.ReleaseValues();
+                    }
                 }
 
                 _sniffer = sniffer;

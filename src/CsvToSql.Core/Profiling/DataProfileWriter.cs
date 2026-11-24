@@ -26,14 +26,22 @@ public static class DataProfileWriter
                 File.WriteAllText(destination, BuildCompactCsv(results));
                 break;
             case "csvdq":
-                File.WriteAllText(destination, BuildDqCsv(results));
+                using (var w = new StreamWriter(destination, append: false, new UTF8Encoding(false)))
+                {
+                    WriteDqCsv(results, w);
+                }
+
                 break;
             default:
                 throw new ArgumentException($"Unknown profile format '{format}'. Expected xml, csv or csvdq.");
         }
     }
 
-    public static XDocument BuildXml(IReadOnlyList<ColumnProfile> results, ProfilerType types, bool ignoreSpace,
+    /// <summary>
+    /// Builds the profile lazily: value and length distributions are only enumerated while being written, so a
+    /// column with millions of distinct values doesn't also need millions of XML nodes in memory.
+    /// </summary>
+    public static XStreamingElement BuildXml(IReadOnlyList<ColumnProfile> results, ProfilerType types, bool ignoreSpace,
         string filename, string? server, string? database, string? schema, string? table, Guid srcGuid, Guid dstGuid)
     {
         ArgumentNullException.ThrowIfNull(results);
@@ -63,9 +71,7 @@ public static class DataProfileWriter
             new XAttribute("StringCompareOptions", "0"));
         Type Best(ColumnProfile s) => s.BestDataType ?? typeof(string);
 
-        return new XDocument(
-            new XDeclaration("1.0", "utf-8", "no"),
-            new XElement(Ns + "DataProfile",
+        return new XStreamingElement(Ns + "DataProfile",
                 new XAttribute(XNamespace.Xmlns + "xsi", Xsi),
                 new XAttribute(XNamespace.Xmlns + "xsd", Xsd),
                 new XElement(Ns + "ProfileVersion", "1.0"),
@@ -100,44 +106,44 @@ public static class DataProfileWriter
                                 new XElement(Ns + "Option", "FrequentValues"),
                                 new XElement(Ns + "FrequentValueThreshold", "0.001"))
                             : null)),
-                new XElement(Ns + "DataProfileOutput",
-                    new XElement(Ns + "Profiles",
+                new XStreamingElement(Ns + "DataProfileOutput",
+                    new XStreamingElement(Ns + "Profiles",
                         results.Where(_ => nullProfiler).Select(s =>
-                            new XElement(Ns + "ColumnNullRatioProfile", new XAttribute("ProfileRequestID", "NullRatioReq"), new XAttribute("IsExact", "true"),
-                                new XElement(Ns + "DataSourceID", dstGuid),
+                            new XStreamingElement(Ns + "ColumnNullRatioProfile", new XAttribute("ProfileRequestID", "NullRatioReq"), new XAttribute("IsExact", "true"),
+                                new XStreamingElement(Ns + "DataSourceID", dstGuid),
                                 OutputTable(s),
                                 Column(s, Best(s)),
-                                new XElement(Ns + "NullCount", s.RowsChecked - s.NumPopulated))),
+                                new XStreamingElement(Ns + "NullCount", s.RowsChecked - s.NumPopulated))),
                         results.Where(s => lengthProfiler && s.BaseDataType == typeof(string)).Select(s =>
-                            new XElement(Ns + "ColumnLengthDistributionProfile", new XAttribute("ProfileRequestID", "LengthDistReq"), new XAttribute("IsExact", "true"),
-                                new XElement(Ns + "DataSourceID", dstGuid),
+                            new XStreamingElement(Ns + "ColumnLengthDistributionProfile", new XAttribute("ProfileRequestID", "LengthDistReq"), new XAttribute("IsExact", "true"),
+                                new XStreamingElement(Ns + "DataSourceID", dstGuid),
                                 OutputTable(s),
                                 Column(s, Best(s)),
-                                new XElement(Ns + "IgnoreLeadingSpace", ignoreSpace),
-                                new XElement(Ns + "IgnoreTrailingSpace", ignoreSpace),
-                                new XElement(Ns + "MinLength", s.MinLength),
-                                new XElement(Ns + "MaxLength", s.MaxLength),
-                                new XElement(Ns + "LengthDistribution",
+                                new XStreamingElement(Ns + "IgnoreLeadingSpace", ignoreSpace),
+                                new XStreamingElement(Ns + "IgnoreTrailingSpace", ignoreSpace),
+                                new XStreamingElement(Ns + "MinLength", s.MinLength),
+                                new XStreamingElement(Ns + "MaxLength", s.MaxLength),
+                                new XStreamingElement(Ns + "LengthDistribution",
                                     s.LengthDistributions.Select(ld =>
-                                        new XElement(Ns + "LengthDistributionItem",
-                                            new XElement(Ns + "Length", ld.Key),
-                                            new XElement(Ns + "Count", ld.Value)))))),
+                                        new XStreamingElement(Ns + "LengthDistributionItem",
+                                            new XStreamingElement(Ns + "Length", ld.Key),
+                                            new XStreamingElement(Ns + "Count", ld.Value)))))),
                         results.Where(_ => valueProfiler).Select(s =>
-                            new XElement(Ns + "ColumnValueDistributionProfile", new XAttribute("ProfileRequestID", "ValueDistReq"), new XAttribute("IsExact", "true"),
-                                new XElement(Ns + "DataSourceID", dstGuid),
+                            new XStreamingElement(Ns + "ColumnValueDistributionProfile", new XAttribute("ProfileRequestID", "ValueDistReq"), new XAttribute("IsExact", "true"),
+                                new XStreamingElement(Ns + "DataSourceID", dstGuid),
                                 OutputTable(s),
                                 Column(s, Best(s) == typeof(DateTime) ? typeof(string) : Best(s)),
-                                new XElement(Ns + "NumberOfDistinctValues", s.NumDistinctValues),
-                                new XElement(Ns + "ValueDistribution",
+                                new XStreamingElement(Ns + "NumberOfDistinctValues", s.NumDistinctValues),
+                                new XStreamingElement(Ns + "ValueDistribution",
                                     s.Values.Select(v =>
-                                        new XElement(Ns + "ValueDistributionItem",
-                                            new XElement(Ns + "Value", s.TypedValue(v.Key)),
-                                            new XElement(Ns + "Count", v.Value))))))))));
+                                        new XStreamingElement(Ns + "ValueDistributionItem",
+                                            new XStreamingElement(Ns + "Value", s.TypedValue(v.Key)),
+                                            new XStreamingElement(Ns + "Count", v.Value)))))))));
     }
 
-    public static void WriteXml(XDocument doc, string destination)
+    public static void WriteXml(XStreamingElement root, string destination)
     {
-        ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(root);
         var dir = Path.GetDirectoryName(Path.GetFullPath(destination));
         if (!string.IsNullOrEmpty(dir))
         {
@@ -151,7 +157,9 @@ public static class DataProfileWriter
             Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
         };
         using var w = XmlWriter.Create(destination, settings);
-        doc.WriteTo(w);
+        w.WriteStartDocument(standalone: false);
+        root.WriteTo(w);
+        w.WriteEndDocument();
     }
 
     public static string BuildCompactCsv(IReadOnlyList<ColumnProfile> results)
@@ -169,20 +177,19 @@ public static class DataProfileWriter
         return sb.ToString();
     }
 
-    public static string BuildDqCsv(IReadOnlyList<ColumnProfile> results)
+    public static void WriteDqCsv(IReadOnlyList<ColumnProfile> results, TextWriter writer)
     {
         ArgumentNullException.ThrowIfNull(results);
-        var sb = new StringBuilder();
-        sb.AppendLine("Field,Type,Value,RowCount");
+        ArgumentNullException.ThrowIfNull(writer);
+        writer.WriteLine("Field,Type,Value,RowCount");
         foreach (var s in results)
         {
             var typeName = (s.BestDataType ?? typeof(string)).GetSqlDbType();
             foreach (var v in s.Values)
             {
-                sb.AppendLine(CultureInfo.InvariantCulture, $"\"{s.Name}\",\"{typeName}\",\"{v.Key.Replace("\"", "\"\"", StringComparison.Ordinal)}\",{v.Value}");
+                writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                    $"\"{s.Name}\",\"{typeName}\",\"{v.Key.Replace("\"", "\"\"", StringComparison.Ordinal)}\",{v.Value}"));
             }
         }
-
-        return sb.ToString();
     }
 }
