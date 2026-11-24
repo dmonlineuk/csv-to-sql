@@ -41,6 +41,12 @@ public static class OptionsMapper
             warnings.Add("No --dest.sql.auth.username given, so SQL authentication is not used.");
         }
 
+        if (cl.Switch("dest.return.rowcount") && !OperatingSystem.IsWindows())
+        {
+            warnings.Add("--dest.return.rowcount: exit codes are 0-255 on this platform, so the row count is reported modulo 256 "
+                + "and can look like success (0) or failure (1). Read the row count from the log instead.");
+        }
+
         return warnings;
     }
 
@@ -149,6 +155,8 @@ public static class OptionsMapper
                 TruncateTable = cl.Switch("dest.sql.table.truncate"),
                 TableLock = cl.Switch("dest.sql.table.lock"),
                 BatchSize = cl.IntValue("dest.sql.table.bufferSize", -1),
+                RetryCount = cl.IntValue("dest.sql.retry.count", 6),
+                RetryWaitSeconds = cl.IntValue("dest.sql.retry.waitSeconds", 10),
                 TextLength = cl.IntValue("dest.sql.format.textLength", 255),
                 DecimalSize = cl.Value("dest.sql.format.decimalSize") ?? "18,10",
                 Unicode = cl.Switch("dest.sql.format.unicode"),

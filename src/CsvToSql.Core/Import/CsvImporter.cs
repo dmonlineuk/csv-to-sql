@@ -19,6 +19,11 @@ public sealed class CsvImporter(ImportOptions options, ImportLog? log = null)
 {
     private readonly ImportLog _log = log ?? ImportLog.Null;
 
+    private CsvSniffer? _sniffer;
+
+    /// <summary>Waits between SQL retries; replaceable for tests.</summary>
+    public Action<TimeSpan>? RetrySleep { get; init; }
+
     /// <summary>Output fields and their destination names, available after <see cref="Prepare"/>.</summary>
     public sealed record Plan(
         Encoding Encoding,
@@ -63,8 +68,18 @@ public sealed class CsvImporter(ImportOptions options, ImportLog? log = null)
                 plan.DestinationNames[i],
                 SqlDdl.SqlTypeFor(f, plan.StronglyTyped && !options.WeaklyTyped, sql.Unicode, sql.TextLength, sql.DecimalSize)))
             .ToList();
-        var importer = new SqlBulkImporter(sql, _log);
-        var rows = importer.Import(reader, table, columns, options.AddSurrogateKey);
+        var importer = new SqlBulkImporter(sql, _log) { Sleep = RetrySleep };
+        CsvDataReader? first = reader;
+        var rows = importer.Import(
+            () =>
+            {
+                var r = first ?? OpenReader(out _);
+                first = null;
+                return r;
+            },
+            table,
+            columns,
+            options.AddSurrogateKey);
         return new ImportResult(rows, plan.Profile);
     }
 
@@ -101,62 +116,68 @@ public sealed class CsvImporter(ImportOptions options, ImportLog? log = null)
 
         if (options.Sniff || options.ProfileOnly)
         {
-            var sniffer = new CsvSniffer
+            if (_sniffer is null)
             {
-                TreatDashAsNull = true,
-                TreatYesNoAsBool = !options.SniffYesNoAsString,
-                TreatPercentageAsNumeric = true,
-                TreatCurrencyAsNumeric = true,
-                TreatNumericFieldsWithLeadingZeroAsString = options.SniffLeadingZeroIsString,
-                TrimFields = options.TrimValues,
-                HeaderRowsToSkipBefore = options.HeaderRowsToSkipBefore,
-                HeaderRowsToSkipAfter = options.HeaderRowsToSkipAfter,
-                DeduplicateHeaders = options.DeduplicateHeaders,
-                IntegerParsingStyle = options.IntegerParsingStyle,
-                ProfilerTypes = ProfilerTypeParser.Parse(options.ProfileOptions),
-                ForceNoDelimiter = options.ForceNoDelimiter,
-                FailIfRagged = options.FailIfRagged,
-                NoHeaders = !options.HasHeaders,
-                StripControlCharacters = options.StripControlCharacters,
-                CsvEscape = options.Escape,
-            };
-            if (options.SniffForceUtf8)
-            {
-                sniffer.FileEncoding = new UTF8Encoding(false);
+                var sniffer = new CsvSniffer
+                {
+                    TreatDashAsNull = true,
+                    TreatYesNoAsBool = !options.SniffYesNoAsString,
+                    TreatPercentageAsNumeric = true,
+                    TreatCurrencyAsNumeric = true,
+                    TreatNumericFieldsWithLeadingZeroAsString = options.SniffLeadingZeroIsString,
+                    TrimFields = options.TrimValues,
+                    HeaderRowsToSkipBefore = options.HeaderRowsToSkipBefore,
+                    HeaderRowsToSkipAfter = options.HeaderRowsToSkipAfter,
+                    DeduplicateHeaders = options.DeduplicateHeaders,
+                    IntegerParsingStyle = options.IntegerParsingStyle,
+                    ProfilerTypes = ProfilerTypeParser.Parse(options.ProfileOptions),
+                    ForceNoDelimiter = options.ForceNoDelimiter,
+                    FailIfRagged = options.FailIfRagged,
+                    NoHeaders = !options.HasHeaders,
+                    StripControlCharacters = options.StripControlCharacters,
+                    CsvEscape = options.Escape,
+                };
+                if (options.SniffForceUtf8)
+                {
+                    sniffer.FileEncoding = new UTF8Encoding(false);
+                }
+
+                if (options.SniffForceCsv)
+                {
+                    sniffer.Separator = ',';
+                    sniffer.Delimiter = '"';
+                    sniffer.SeparatorAndDelimiterFixed = true;
+                }
+
+                var writeProfile = !string.IsNullOrEmpty(options.ProfileFilename);
+                if (!writeProfile)
+                {
+                    sniffer.ProfilerTypes = ProfilerType.None;
+                }
+
+                sniffer.Sniff(options.SourceFile, options.SniffSampleRate, int.MaxValue, gzip);
+                if (writeProfile)
+                {
+                    DataProfileWriter.Write(options.ProfileFormat, sniffer.Results, sniffer.ProfilerTypes, options.TrimValues,
+                        options.SourceFile, options.ProfileFilename!, options.Sql?.Server, options.Sql?.Database, options.Sql?.Schema, options.Sql?.Table);
+                }
+
+                _sniffer = sniffer;
             }
 
-            if (options.SniffForceCsv)
-            {
-                sniffer.Separator = ',';
-                sniffer.Delimiter = '"';
-                sniffer.SeparatorAndDelimiterFixed = true;
-            }
-
-            var writeProfile = !string.IsNullOrEmpty(options.ProfileFilename);
-            if (!writeProfile)
-            {
-                sniffer.ProfilerTypes = ProfilerType.None;
-            }
-
-            sniffer.Sniff(options.SourceFile, options.SniffSampleRate, int.MaxValue, gzip);
-            encoding = sniffer.FileEncoding ?? encoding;
-            separator = sniffer.Separator;
-            delimiter = sniffer.Delimiter;
-            hasHeaders = sniffer.HasHeaders;
-            profile = sniffer.Results;
+            var sniffed = _sniffer;
+            encoding = sniffed.FileEncoding ?? encoding;
+            separator = sniffed.Separator;
+            delimiter = sniffed.Delimiter;
+            hasHeaders = sniffed.HasHeaders;
+            profile = sniffed.Results;
             _log.Info(string.Create(CultureInfo.InvariantCulture,
-                $"Sniffed {options.SourceFile}: encoding={encoding.WebName} separator={Printable(separator)} delimiter={Printable(delimiter)} headers={hasHeaders} columns={sniffer.Results.Count}"));
-
-            if (writeProfile)
-            {
-                DataProfileWriter.Write(options.ProfileFormat, sniffer.Results, sniffer.ProfilerTypes, options.TrimValues,
-                    options.SourceFile, options.ProfileFilename!, options.Sql?.Server, options.Sql?.Database, options.Sql?.Schema, options.Sql?.Table);
-            }
+                $"Sniffed {options.SourceFile}: encoding={encoding.WebName} separator={Printable(separator)} delimiter={Printable(delimiter)} headers={hasHeaders} columns={sniffed.Results.Count}"));
 
             if (hasHeaders)
             {
                 stronglyTyped = true;
-                fields = sniffer.Results.Select((r, i) =>
+                fields = sniffed.Results.Select((r, i) =>
                 {
                     var type = r.BestDataType ?? typeof(string);
                     var f = new FieldSpec

@@ -7,16 +7,58 @@ namespace CsvToSql.Core.Sql;
 
 /// <summary>
 /// Prepares the destination table (schema, drop, create, truncate) and streams rows into it with <see cref="SqlBulkCopy"/>.
+/// Transient failures (busy server, timeouts, deadlocks, dropped connections) restart the whole import from the first row
+/// after a wait, when that can't duplicate rows.
 /// </summary>
 public sealed class SqlBulkImporter(SqlDestinationOptions options, ImportLog log)
 {
-    public long Import(IDataReader reader, string table, IReadOnlyList<DestinationColumn> columns, bool addSurrogateKey)
+    /// <summary>Waits between retries; replaceable for tests.</summary>
+    public Action<TimeSpan>? Sleep { get; init; }
+
+    /// <param name="openReader">Opens the source rows from the start; called again for each retry.</param>
+    public long Import(Func<IDataReader> openReader, string table, IReadOnlyList<DestinationColumn> columns, bool addSurrogateKey)
     {
-        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(openReader);
         ArgumentNullException.ThrowIfNull(columns);
         var schema = string.IsNullOrWhiteSpace(options.Schema) ? "dbo" : options.Schema;
         var objectName = SqlIdentifier.QuoteTwoPart(schema, table);
+        var bulkCopyStarted = false;
 
+        bool CanRetry(Exception ex)
+        {
+            if (!SqlRetry.IsTransient(ex))
+            {
+                return false;
+            }
+
+            SqlConnection.ClearAllPools();
+            if (bulkCopyStarted && !options.DropTable && !options.TruncateTable && options.BatchSize > 0)
+            {
+                log.Error($"Bulk copy into {objectName} failed with a transient error but is not retried: earlier batches may "
+                    + "already be committed, so a retry could duplicate rows. Use --dest.sql.table.drop or --dest.sql.table.truncate "
+                    + "(or no --dest.sql.table.bufferSize) to make it retryable.");
+                return false;
+            }
+
+            return true;
+        }
+
+        return SqlRetry.Run(
+            _ =>
+            {
+                bulkCopyStarted = false;
+                using var reader = openReader();
+                return ImportOnce(reader, schema, table, objectName, columns, addSurrogateKey, () => bulkCopyStarted = true);
+            },
+            CanRetry,
+            options.RetryPolicy,
+            log,
+            $"Import into {objectName}",
+            Sleep);
+    }
+
+    private long ImportOnce(IDataReader reader, string schema, string table, string objectName, IReadOnlyList<DestinationColumn> columns, bool addSurrogateKey, Action onBulkCopyStarted)
+    {
         using var conn = SqlConnectionFactory.Create(options);
         conn.Open();
 
@@ -68,6 +110,7 @@ public sealed class SqlBulkImporter(SqlDestinationOptions options, ImportLog log
         }
 
         log.Info($"Bulk copy into {objectName} started");
+        onBulkCopyStarted();
         bc.WriteToServer(reader);
         log.Info($"Bulk copy into {objectName} finished: {bc.RowsCopied64} rows");
         return bc.RowsCopied64;
@@ -77,6 +120,7 @@ public sealed class SqlBulkImporter(SqlDestinationOptions options, ImportLog log
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT name FROM sys.columns WHERE object_id = OBJECT_ID(@object) ORDER BY column_id";
+        cmd.CommandTimeout = 0;
         cmd.Parameters.Add(new SqlParameter("@object", SqlDbType.NVarChar, 520) { Value = objectName });
         using var r = cmd.ExecuteReader();
         var names = new List<string>();

@@ -44,7 +44,9 @@ CsvToDb -i "/path/file.csv" --processing.columns.fromHeader \
 password is read from the `CSVTOSQL_SQL_PASSWORD` environment variable, which keeps it out of `ps` output.
 
 Exit codes: `0` success, `1` import failed (details on stderr / in the log), `2` invalid command line. With
-`--dest.return.rowcount` the exit code is the number of rows imported, as in the legacy tool.
+`--dest.return.rowcount` the exit code is the number of rows imported, as in the legacy tool. On Linux exit codes
+are 0–255, so that count is reported modulo 256 (a warning is logged); read the row count from the log instead. A
+kill (e.g. SIGTERM from a scheduler timeout) is logged as `Stopped by SIGTERM before finishing file: ...` and exits 143.
 
 ### Behaviour notes
 
@@ -66,6 +68,12 @@ Exit codes: `0` success, `1` import failed (details on stderr / in the log), `2`
   Function and variable names include `-` and `.`, so write `$$linenumber_x` rather than `$$linenumber-x`.
 * Schema, table and column names are quoted in all generated SQL. `--dest.sql.table.drop` drops and recreates the
   table; `--dest.sql.table.truncate` empties it; `--dest.sql.table.nocreate` requires it to already exist.
+* Transient SQL errors (timeouts, deadlocks, dropped connections, Azure SQL "busy"/resource-limit errors) are
+  retried rather than failing the run: the whole import restarts from the first row after a wait, and each retry is
+  logged as a warning. `--dest.sql.retry.count` (default 6) and `--dest.sql.retry.waitSeconds` (default 10, doubling
+  up to 120s) control this; other errors fail at once. A bulk copy that already committed batches
+  (`--dest.sql.table.bufferSize` without `--dest.sql.table.drop`/`truncate`) is not retried, to avoid duplicate rows.
+* Concurrent runs can share one `--ui.logger.filename`: every line is appended atomically.
 * The profile (`--processing.profile.filename`, options `LNV` = length, null ratio, value distribution) follows the
   SSIS Data Profiling Task XML format and opens in the SSIS Data Profile Viewer.
 

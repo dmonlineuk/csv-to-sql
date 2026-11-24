@@ -81,4 +81,88 @@ public class SqlIntegrationTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void ConcurrentRunsCreatingTheSameSchemaAllSucceed()
+    {
+        Assert.SkipWhen(string.IsNullOrEmpty(Server), "CSVTOSQL_TEST_SQL_SERVER not set");
+        var schema = "concurrent_" + Guid.NewGuid().ToString("N");
+        var results = new long[8];
+        Parallel.For(0, results.Length, new ParallelOptions { MaxDegreeOfParallelism = results.Length }, i =>
+        {
+            var o = ImporterTests.ProductionLikeOptions(TestFiles.Fixture);
+            o.DestNone = false;
+            o.Sql = Destination("t" + i, schema);
+            o.Sql.RetryCount = 0;
+            results[i] = new CsvImporter(o).Run().RowsWritten;
+        });
+
+        Assert.All(results, r => Assert.Equal(2, r));
+    }
+
+    [Fact]
+    public async Task BulkCopyKilledMidwayIsRetriedFromTheStart()
+    {
+        Assert.SkipWhen(string.IsNullOrEmpty(Server), "CSVTOSQL_TEST_SQL_SERVER not set");
+        Assert.SkipWhen(
+            Scalar<int>(Destination("x"), "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'ALTER ANY CONNECTION') & HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE')") == 0,
+            "the test login cannot kill sessions; see scripts/start-test-sql.sh");
+        const int rows = 300_000;
+        var path = Path.Combine(Path.GetTempPath(), "csvtosql-" + Guid.NewGuid().ToString("N") + ".csv");
+        using (var w = new StreamWriter(path))
+        {
+            w.WriteLine("id,name,payload");
+            for (var i = 0; i < rows; i++)
+            {
+                w.WriteLine($"{i},name {i},{new string('x', 200)}");
+            }
+        }
+
+        try
+        {
+            var table = "killed_" + Guid.NewGuid().ToString("N");
+            var d = Destination(table);
+            d.RetryWaitSeconds = 1;
+            var console = new StringWriter();
+            using var log = new CsvToSql.Core.Logging.ImportLog(console: TextWriter.Synchronized(console));
+            var o = new ImportOptions { SourceFile = path, ColumnsFromHeader = true, Sql = d };
+
+            var killed = false;
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            cts.CancelAfter(TimeSpan.FromMinutes(2));
+            var killer = Task.Run(() =>
+            {
+                var admin = Destination(table);
+                while (!cts.IsCancellationRequested)
+                {
+                    var spid = Scalar<object>(admin,
+                        "SELECT ISNULL((SELECT TOP 1 r.session_id FROM sys.dm_exec_requests r JOIN sys.dm_exec_sessions s ON s.session_id = r.session_id "
+                        + "WHERE s.program_name = 'CsvToDb' AND r.command = 'BULK INSERT' AND r.session_id <> @@SPID), 0)");
+                    if (Convert.ToInt32(spid, System.Globalization.CultureInfo.InvariantCulture) is var id and > 0)
+                    {
+                        using var conn = CsvToSql.Core.Sql.SqlConnectionFactory.Create(admin);
+                        conn.Open();
+                        using var cmd = new SqlCommand($"KILL {id}", conn);
+                        cmd.ExecuteNonQuery();
+                        killed = true;
+                        return;
+                    }
+
+                    Thread.Sleep(20);
+                }
+            }, cts.Token);
+
+            var result = new CsvImporter(o, log).Run();
+            await killer;
+
+            Assert.True(killed, "the bulk copy session was never seen, so nothing was killed");
+            Assert.Equal(rows, result.RowsWritten);
+            Assert.Equal(rows, Scalar<int>(d, $"SELECT COUNT(*) FROM [stagingUntyped].[{table}]"));
+            Assert.Contains("failed with a transient error, retrying", console.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

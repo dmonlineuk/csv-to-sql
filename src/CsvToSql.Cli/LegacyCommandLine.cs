@@ -147,6 +147,8 @@ public static class LegacyCommandLine
         new("dest.sql.table.truncate", null, OptionKind.Switch),
         new("dest.sql.table.lock", null, OptionKind.Switch),
         new("dest.sql.table.bufferSize", null, OptionKind.Value),
+        new("dest.sql.retry.count", null, OptionKind.Value, Help: "Retries after a transient SQL error such as a busy server (default 6)"),
+        new("dest.sql.retry.waitSeconds", null, OptionKind.Value, Help: "Wait before the first retry, doubling each time up to 120s (default 10)"),
         new("dest.sql.format.textLength", null, OptionKind.Value),
         new("dest.sql.format.decimalSize", null, OptionKind.Value),
         new("dest.sql.format.unicode", null, OptionKind.Switch),

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using CsvToSql.Cli;
 using CsvToSql.Core.Filters;
 using CsvToSql.Core.Import;
@@ -37,7 +38,20 @@ internal static class CliApp
 
         var host = OptionsMapper.MapHost(cl);
         var exitCode = 0;
-        using (var log = new ImportLog(host.LogFilename, host.Verbose, stderr))
+        ImportLog log;
+        try
+        {
+            log = new ImportLog(host.LogFilename, host.Verbose, stderr);
+        }
+        catch (Exception ex)
+        {
+            stderr.WriteLine($"Failed file: {cl.Value("src.filename")}");
+            stderr.WriteLine(ex.ToString());
+            return 1;
+        }
+
+        using (log)
+        using (OnTermination(log, cl.Value("src.filename")))
         {
             void OnWarning(string m) => log.Warn(m);
             FilterFactory.Warning += OnWarning;
@@ -92,6 +106,27 @@ internal static class CliApp
         }
 
         return exitCode;
+    }
+
+    /// <summary>Logs a kill (e.g. a scheduler timeout) so the run doesn't vanish without trace; the process still stops.</summary>
+    private static CompositeDisposable OnTermination(ImportLog log, string? file)
+    {
+        void Log(PosixSignalContext ctx) => log.Error($"Stopped by {ctx.Signal} before finishing file: {file}");
+        return new CompositeDisposable(
+            [.. new[] { PosixSignal.SIGTERM, PosixSignal.SIGINT, PosixSignal.SIGHUP, PosixSignal.SIGQUIT }
+                .Where(s => !OperatingSystem.IsWindows() || s is PosixSignal.SIGINT or PosixSignal.SIGQUIT or PosixSignal.SIGHUP)
+                .Select(s => PosixSignalRegistration.Create(s, Log))]);
+    }
+
+    private sealed class CompositeDisposable(IReadOnlyList<IDisposable> items) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var item in items)
+            {
+                item.Dispose();
+            }
+        }
     }
 
     public static string Usage()

@@ -167,4 +167,16 @@ public class CommandLineTests
 
         Assert.Single(warnings);
     }
+
+    [Fact]
+    public void MapsSqlRetryOptions()
+    {
+        var defaults = OptionsMapper.Map(LegacyCommandLine.Parse(["-i", "a.csv", "-s", "srv"]), _ => null).Sql!;
+        Assert.Equal(6, defaults.RetryCount);
+        Assert.Equal(TimeSpan.FromSeconds(10), defaults.RetryPolicy.InitialDelay);
+
+        var o = OptionsMapper.Map(
+            LegacyCommandLine.Parse(["-i", "a.csv", "-s", "srv", "--dest.sql.retry.count", "2", "--dest.sql.retry.waitSeconds", "3"]), _ => null).Sql!;
+        Assert.Equal(new CsvToSql.Core.Sql.SqlRetryPolicy(2, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(120)), o.RetryPolicy);
+    }
 }
