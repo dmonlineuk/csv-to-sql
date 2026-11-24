@@ -45,8 +45,8 @@ public static class OptionsMapper
 
         if (cl.Switch("dest.return.rowcount") && !OperatingSystem.IsWindows())
         {
-            warnings.Add("--dest.return.rowcount: exit codes are 0-255 on this platform, so the row count is reported modulo 256 "
-                + "and can look like success (0) or failure (1). Read the row count from the log instead.");
+            warnings.Add("--dest.return.rowcount is ignored on this platform: the exit code reports the kind of failure instead "
+                + "(see README). The row count is in the log.");
         }
 
         return warnings;

@@ -47,7 +47,8 @@ internal static class CliApp
         {
             stderr.WriteLine($"Failed file: {cl.Value("src.filename")}");
             stderr.WriteLine(ex.ToString());
-            return 1;
+            stderr.WriteLine(ExitMessage(ExitCodes.FileError));
+            return ExitCodes.FileError;
         }
 
         using (log)
@@ -75,7 +76,7 @@ internal static class CliApp
                     log.Info(string.Create(CultureInfo.InvariantCulture, $"Imported {result.RowsWritten} rows"));
                 }
 
-                if (host.ReturnRowCount)
+                if (host.ReturnRowCount && OperatingSystem.IsWindows())
                 {
                     exitCode = (int)Math.Min(result.RowsWritten, int.MaxValue);
                 }
@@ -83,7 +84,8 @@ internal static class CliApp
             catch (CommandLineException ex)
             {
                 stderr.WriteLine(ex.Message);
-                exitCode = 2;
+                exitCode = ExitCodes.InvalidCommandLine;
+                log.Error(ExitMessage(exitCode));
             }
 #pragma warning disable CA1031 // top level handler: report and return a failure exit code
             catch (Exception ex)
@@ -91,7 +93,8 @@ internal static class CliApp
             {
                 log.Error($"Failed file: {cl.Value("src.filename")}");
                 log.Error(ex.ToString());
-                exitCode = 1;
+                exitCode = ExitCodes.For(ex);
+                log.Error(ExitMessage(exitCode));
             }
             finally
             {
@@ -108,6 +111,9 @@ internal static class CliApp
 
         return exitCode;
     }
+
+    private static string ExitMessage(int code) =>
+        string.Create(CultureInfo.InvariantCulture, $"Exit code {code}: {ExitCodes.Describe(code)}");
 
     /// <summary>Logs a kill (e.g. a scheduler timeout) so the run doesn't vanish without trace; the process still stops.</summary>
     private static CompositeDisposable OnTermination(ImportLog log, string? file)

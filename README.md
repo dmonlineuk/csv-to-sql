@@ -43,10 +43,23 @@ CsvToDb -i "/path/file.csv" --processing.columns.fromHeader \
 `CsvToDb --help` lists every option. If `--dest.sql.auth.username` is given without `--dest.sql.auth.password`, the
 password is read from the `CSVTOSQL_SQL_PASSWORD` environment variable, which keeps it out of `ps` output.
 
-Exit codes: `0` success, `1` import failed (details on stderr / in the log), `2` invalid command line. With
-`--dest.return.rowcount` the exit code is the number of rows imported, as in the legacy tool. On Linux exit codes
-are 0–255, so that count is reported modulo 256 (a warning is logged); read the row count from the log instead. A
-kill (e.g. SIGTERM from a scheduler timeout) is logged as `Stopped by SIGTERM before finishing file: ...` and exits 143.
+Exit codes tell failures apart; each failure also logs `Exit code N: <reason>` to stderr and the log:
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Unexpected error |
+| 2 | Invalid command line |
+| 3 | File error: the source, log or profile file can't be read or written |
+| 4 | Data error: bad CSV header, row or value |
+| 5 | SQL login, TLS certificate or permission failure |
+| 6 | SQL Server busy or unreachable: a transient error after retries were used up, or not safe to retry |
+| 7 | Other SQL error, e.g. missing table or column, constraint violation |
+| 8 | Out of memory (managed) |
+| 128+N | Killed by signal N, e.g. 143 for SIGTERM (logged as `Stopped by SIGTERM before finishing file: ...`) or 137 for SIGKILL (the out-of-memory killer; nothing can be logged) |
+
+On Windows, `--dest.return.rowcount` makes a successful run return the number of rows imported, as in the legacy
+tool. On Linux exit codes are 0–255, so it is ignored (with a warning) and the row count is in the log.
 
 ### Behaviour notes
 

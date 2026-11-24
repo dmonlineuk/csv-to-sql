@@ -37,7 +37,7 @@ public static class SqlRetry
         ArgumentNullException.ThrowIfNull(ex);
         return ex switch
         {
-            SqlException sql => IsTransient(sql.Errors.Cast<SqlError>().Select(e => (e.Number, e.Class)), HasCertificateError(sql)),
+            SqlException sql => IsTransient(sql.Errors.Cast<SqlError>().Select(e => (e.Number, e.Class)), IsCertificateError(sql)),
             TimeoutException => true,
             _ => false,
         };
@@ -90,8 +90,10 @@ public static class SqlRetry
         ? string.Create(CultureInfo.InvariantCulture, $"SQL error {sql.Number}: {sql.Message}")
         : ex.Message;
 
-    private static bool HasCertificateError(Exception ex)
+    /// <summary>True when the connection failed because the server's TLS certificate was rejected.</summary>
+    public static bool IsCertificateError(Exception ex)
     {
+        ArgumentNullException.ThrowIfNull(ex);
         for (var e = ex.InnerException; e is not null; e = e.InnerException)
         {
             if (e is AuthenticationException)

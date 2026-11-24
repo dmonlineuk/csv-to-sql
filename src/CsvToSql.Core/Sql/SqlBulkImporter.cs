@@ -105,7 +105,7 @@ public sealed class SqlBulkImporter(SqlDestinationOptions options, ImportLog log
             var source = reader.GetName(i);
             var dest = existing.FirstOrDefault(c => string.Equals(c, source, StringComparison.Ordinal))
                 ?? existing.FirstOrDefault(c => string.Equals(c, source, StringComparison.OrdinalIgnoreCase))
-                ?? throw new InvalidOperationException($"Destination table {objectName} has no column '{source}'.");
+                ?? throw new SqlDestinationException($"Destination table {objectName} has no column '{source}'.");
             bc.ColumnMappings.Add(i, dest);
         }
 
@@ -131,7 +131,7 @@ public sealed class SqlBulkImporter(SqlDestinationOptions options, ImportLog log
 
         if (names.Count == 0)
         {
-            throw new InvalidOperationException($"Destination table {objectName} does not exist.");
+            throw new SqlDestinationException($"Destination table {objectName} does not exist.");
         }
 
         return names;
