@@ -147,6 +147,8 @@ public static class LegacyCommandLine
         new("dest.sql.table.truncate", null, OptionKind.Switch),
         new("dest.sql.table.lock", null, OptionKind.Switch),
         new("dest.sql.table.bufferSize", null, OptionKind.Value),
+        new("dest.sql.retry.count", null, OptionKind.Value, Help: "Retries after a transient SQL error such as a busy server (default 6)"),
+        new("dest.sql.retry.waitSeconds", null, OptionKind.Value, Help: "Wait before the first retry, doubling each time up to 120s (default 10)"),
         new("dest.sql.format.textLength", null, OptionKind.Value),
         new("dest.sql.format.decimalSize", null, OptionKind.Value),
         new("dest.sql.format.unicode", null, OptionKind.Switch),
@@ -160,6 +162,8 @@ public static class LegacyCommandLine
         new("ui.waitForKeyPress.no", null, OptionKind.Switch),
         new("ui.logger.filename", 'l', OptionKind.Value),
         new("ui.logger.verbose", 'v', OptionKind.Switch),
+        new("ui.wait.maxConcurrent", null, OptionKind.Value, Help: "Most CsvToDb runs at once on this machine; others wait (default: CPU count, 0 = no limit)"),
+        new("ui.wait.minFreeMemoryMB", null, OptionKind.Value, Help: "Wait until this much memory is available before starting (default 1024, 0 = don't wait)"),
     ];
 
     private static readonly Dictionary<string, OptionDefinition> ByName =

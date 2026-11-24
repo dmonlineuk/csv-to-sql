@@ -43,8 +43,23 @@ CsvToDb -i "/path/file.csv" --processing.columns.fromHeader \
 `CsvToDb --help` lists every option. If `--dest.sql.auth.username` is given without `--dest.sql.auth.password`, the
 password is read from the `CSVTOSQL_SQL_PASSWORD` environment variable, which keeps it out of `ps` output.
 
-Exit codes: `0` success, `1` import failed (details on stderr / in the log), `2` invalid command line. With
-`--dest.return.rowcount` the exit code is the number of rows imported, as in the legacy tool.
+Exit codes tell failures apart; each failure also logs `Exit code N: <reason>` to stderr and the log:
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Unexpected error |
+| 2 | Invalid command line |
+| 3 | File error: the source, log or profile file can't be read or written |
+| 4 | Data error: bad CSV header, row or value |
+| 5 | SQL login, TLS certificate or permission failure |
+| 6 | SQL Server busy or unreachable: a transient error after retries were used up, or not safe to retry |
+| 7 | Other SQL error, e.g. missing table or column, constraint violation |
+| 8 | Out of memory (managed) |
+| 128+N | Killed by signal N, e.g. 143 for SIGTERM (logged as `Stopped by SIGTERM before finishing file: ...`) or 137 for SIGKILL (the out-of-memory killer; nothing can be logged) |
+
+On Windows, `--dest.return.rowcount` makes a successful run return the number of rows imported, as in the legacy
+tool. On Linux exit codes are 0–255, so it is ignored (with a warning) and the row count is in the log.
 
 ### Behaviour notes
 
@@ -66,6 +81,19 @@ Exit codes: `0` success, `1` import failed (details on stderr / in the log), `2`
   Function and variable names include `-` and `.`, so write `$$linenumber_x` rather than `$$linenumber-x`.
 * Schema, table and column names are quoted in all generated SQL. `--dest.sql.table.drop` drops and recreates the
   table; `--dest.sql.table.truncate` empties it; `--dest.sql.table.nocreate` requires it to already exist.
+* Transient SQL errors (timeouts, deadlocks, dropped connections, Azure SQL "busy"/resource-limit errors) are
+  retried rather than failing the run: the whole import restarts from the first row after a wait, and each retry is
+  logged as a warning. `--dest.sql.retry.count` (default 6) and `--dest.sql.retry.waitSeconds` (default 10, doubling
+  up to 120s) control this; other errors fail at once. A bulk copy that already committed batches
+  (`--dest.sql.table.bufferSize` without `--dest.sql.table.drop`/`truncate`) is not retried, to avoid duplicate rows.
+* Concurrent runs can share one `--ui.logger.filename`: every line is appended atomically.
+* Runs wait for resources before starting instead of competing for them: at most `--ui.wait.maxConcurrent` CsvToDb
+  runs (default: CPU count, `0` = no limit) process at once per machine and user temp directory, and a run waits
+  until `--ui.wait.minFreeMemoryMB` (default 1024, `0` = don't wait) is available, honouring cgroup v2 limits. Each
+  wait is logged. Slots are lock files in `$TMPDIR/CsvToDb-runs`, released by the OS even if a run is killed.
+* A profile keeps every distinct value of each column in memory while sniffing (about 850 MB for a 3M-row, 364 MB
+  file), so lower `--ui.wait.maxConcurrent` on hosts that run several profiled imports at once. A run killed by the
+  out-of-memory killer (SIGKILL) can't log anything; check `journalctl -k`. SIGTERM/SIGINT/SIGHUP/SIGQUIT are logged.
 * The profile (`--processing.profile.filename`, options `LNV` = length, null ratio, value distribution) follows the
   SSIS Data Profiling Task XML format and opens in the SSIS Data Profile Viewer.
 

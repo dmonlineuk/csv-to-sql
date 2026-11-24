@@ -61,6 +61,9 @@ public sealed class ColumnProfile
         }
     }
 
+    /// <summary>Frees the distinct values (they can take most of the memory) once the profile has been written.</summary>
+    public void ReleaseValues() => Values = new Dictionary<string, int>();
+
     public void Reset(string name)
     {
         Name = name;

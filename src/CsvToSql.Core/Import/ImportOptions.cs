@@ -1,5 +1,6 @@
 using System.Globalization;
 using CsvToSql.Core.Profiling;
+using CsvToSql.Core.Sql;
 
 namespace CsvToSql.Core.Import;
 
@@ -143,6 +144,16 @@ public sealed class SqlDestinationOptions
 
     public bool Unicode { get; set; }
 
-    /// <summary>Extra connection string keywords, mainly for tests.</summary>
     public int ConnectTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>Times a transient SQL failure (busy server, timeout, deadlock, dropped connection) is retried.</summary>
+    public int RetryCount { get; set; } = 6;
+
+    /// <summary>Wait before the first retry; it doubles for each further retry, up to two minutes.</summary>
+    public int RetryWaitSeconds { get; set; } = 10;
+
+    public SqlRetryPolicy RetryPolicy => new(
+        Math.Max(0, RetryCount),
+        TimeSpan.FromSeconds(Math.Max(0, RetryWaitSeconds)),
+        TimeSpan.FromSeconds(Math.Max(120, RetryWaitSeconds)));
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts a throwaway SQL Server 2022 container with a SQL-auth login for the integration tests
-# and prints the environment variables that enable them.
+# and prints the environment variables that enable them. The login may also see and kill sessions,
+# so the retry tests can drop an import's connection mid-copy.
 set -euo pipefail
 name="${CSVTOSQL_TEST_CONTAINER:-csvtosql-mssql}"
 port="${CSVTOSQL_TEST_PORT:-14333}"
@@ -19,7 +20,7 @@ for _ in $(seq 1 60); do
 done
 
 docker exec "$name" /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$sa_password" -b -Q \
-  "CREATE LOGIN CsvToDbUser WITH PASSWORD='$user_password', CHECK_POLICY=OFF; CREATE USER CsvToDbUser FOR LOGIN CsvToDbUser; ALTER ROLE db_owner ADD MEMBER CsvToDbUser;" >/dev/null
+  "CREATE LOGIN CsvToDbUser WITH PASSWORD='$user_password', CHECK_POLICY=OFF; CREATE USER CsvToDbUser FOR LOGIN CsvToDbUser; ALTER ROLE db_owner ADD MEMBER CsvToDbUser; GRANT VIEW SERVER STATE, ALTER ANY CONNECTION TO CsvToDbUser;" >/dev/null
 
 cat <<ENV
 export CSVTOSQL_TEST_SQL_SERVER=localhost,$port

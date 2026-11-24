@@ -4,7 +4,7 @@ using CsvToSql.Core.Import;
 namespace CsvToSql.Cli;
 
 /// <summary>Settings that only affect the command line host.</summary>
-public sealed record HostOptions(bool WaitForKeyPress, string? LogFilename, bool Verbose, bool ReturnRowCount);
+public sealed record HostOptions(bool WaitForKeyPress, string? LogFilename, bool Verbose, bool ReturnRowCount, int MaxConcurrentRuns, int MinFreeMemoryMB);
 
 /// <summary>Maps the legacy command line onto <see cref="ImportOptions"/>.</summary>
 public static class OptionsMapper
@@ -18,7 +18,9 @@ public static class OptionsMapper
             !cl.Switch("ui.waitForKeyPress.no"),
             cl.Value("ui.logger.filename"),
             cl.Switch("ui.logger.verbose"),
-            cl.Switch("dest.return.rowcount"));
+            cl.Switch("dest.return.rowcount"),
+            cl.IntValue("ui.wait.maxConcurrent", Environment.ProcessorCount),
+            cl.IntValue("ui.wait.minFreeMemoryMB", 1024));
     }
 
     /// <summary>Command line mistakes that are tolerated but likely unintended.</summary>
@@ -39,6 +41,12 @@ public static class OptionsMapper
         if (cl.Has("dest.sql.server") && !cl.Has("dest.sql.auth.username"))
         {
             warnings.Add("No --dest.sql.auth.username given, so SQL authentication is not used.");
+        }
+
+        if (cl.Switch("dest.return.rowcount") && !OperatingSystem.IsWindows())
+        {
+            warnings.Add("--dest.return.rowcount is ignored on this platform: the exit code reports the kind of failure instead "
+                + "(see README). The row count is in the log.");
         }
 
         return warnings;
@@ -149,6 +157,8 @@ public static class OptionsMapper
                 TruncateTable = cl.Switch("dest.sql.table.truncate"),
                 TableLock = cl.Switch("dest.sql.table.lock"),
                 BatchSize = cl.IntValue("dest.sql.table.bufferSize", -1),
+                RetryCount = cl.IntValue("dest.sql.retry.count", 6),
+                RetryWaitSeconds = cl.IntValue("dest.sql.retry.waitSeconds", 10),
                 TextLength = cl.IntValue("dest.sql.format.textLength", 255),
                 DecimalSize = cl.Value("dest.sql.format.decimalSize") ?? "18,10",
                 Unicode = cl.Switch("dest.sql.format.unicode"),

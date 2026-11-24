@@ -167,4 +167,28 @@ public class CommandLineTests
 
         Assert.Single(warnings);
     }
+
+    [Fact]
+    public void MapsSqlRetryOptions()
+    {
+        var defaults = OptionsMapper.Map(LegacyCommandLine.Parse(["-i", "a.csv", "-s", "srv"]), _ => null).Sql!;
+        Assert.Equal(6, defaults.RetryCount);
+        Assert.Equal(TimeSpan.FromSeconds(10), defaults.RetryPolicy.InitialDelay);
+
+        var o = OptionsMapper.Map(
+            LegacyCommandLine.Parse(["-i", "a.csv", "-s", "srv", "--dest.sql.retry.count", "2", "--dest.sql.retry.waitSeconds", "3"]), _ => null).Sql!;
+        Assert.Equal(new CsvToSql.Core.Sql.SqlRetryPolicy(2, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(120)), o.RetryPolicy);
+    }
+
+    [Fact]
+    public void MapsRunGateOptions()
+    {
+        var defaults = OptionsMapper.MapHost(LegacyCommandLine.Parse(["-i", "a.csv"]));
+        Assert.Equal(Environment.ProcessorCount, defaults.MaxConcurrentRuns);
+        Assert.Equal(1024, defaults.MinFreeMemoryMB);
+
+        var host = OptionsMapper.MapHost(LegacyCommandLine.Parse(["-i", "a.csv", "--ui.wait.maxConcurrent", "3", "--ui.wait.minFreeMemoryMB", "0"]));
+        Assert.Equal(3, host.MaxConcurrentRuns);
+        Assert.Equal(0, host.MinFreeMemoryMB);
+    }
 }

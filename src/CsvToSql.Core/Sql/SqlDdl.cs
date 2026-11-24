@@ -9,7 +9,9 @@ namespace CsvToSql.Core.Sql;
 /// </summary>
 public static class SqlDdl
 {
-    public const string CreateSchemaSql = "IF SCHEMA_ID(@schema) IS NULL EXEC(@sql);";
+    /// <summary>Creates the schema if missing; tolerates a concurrent run creating it first.</summary>
+    public const string CreateSchemaSql =
+        "IF SCHEMA_ID(@schema) IS NULL BEGIN TRY EXEC(@sql); END TRY BEGIN CATCH IF SCHEMA_ID(@schema) IS NULL THROW; END CATCH;";
 
     public const string DropTableSql =
         "IF OBJECT_ID(@object, 'U') IS NOT NULL EXEC(N'DROP TABLE ' + @quoted);";
