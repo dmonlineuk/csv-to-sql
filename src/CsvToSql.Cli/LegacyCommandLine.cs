@@ -162,6 +162,8 @@ public static class LegacyCommandLine
         new("ui.waitForKeyPress.no", null, OptionKind.Switch),
         new("ui.logger.filename", 'l', OptionKind.Value),
         new("ui.logger.verbose", 'v', OptionKind.Switch),
+        new("ui.wait.maxConcurrent", null, OptionKind.Value, Help: "Most CsvToDb runs at once on this machine; others wait (default: CPU count, 0 = no limit)"),
+        new("ui.wait.minFreeMemoryMB", null, OptionKind.Value, Help: "Wait until this much memory is available before starting (default 1024, 0 = don't wait)"),
     ];
 
     private static readonly Dictionary<string, OptionDefinition> ByName =

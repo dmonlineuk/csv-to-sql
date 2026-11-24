@@ -74,6 +74,13 @@ kill (e.g. SIGTERM from a scheduler timeout) is logged as `Stopped by SIGTERM be
   up to 120s) control this; other errors fail at once. A bulk copy that already committed batches
   (`--dest.sql.table.bufferSize` without `--dest.sql.table.drop`/`truncate`) is not retried, to avoid duplicate rows.
 * Concurrent runs can share one `--ui.logger.filename`: every line is appended atomically.
+* Runs wait for resources before starting instead of competing for them: at most `--ui.wait.maxConcurrent` CsvToDb
+  runs (default: CPU count, `0` = no limit) process at once per machine and user temp directory, and a run waits
+  until `--ui.wait.minFreeMemoryMB` (default 1024, `0` = don't wait) is available, honouring cgroup v2 limits. Each
+  wait is logged. Slots are lock files in `$TMPDIR/CsvToDb-runs`, released by the OS even if a run is killed.
+* A profile keeps every distinct value of each column in memory while sniffing (about 850 MB for a 3M-row, 364 MB
+  file), so lower `--ui.wait.maxConcurrent` on hosts that run several profiled imports at once. A run killed by the
+  out-of-memory killer (SIGKILL) can't log anything; check `journalctl -k`. SIGTERM/SIGINT/SIGHUP/SIGQUIT are logged.
 * The profile (`--processing.profile.filename`, options `LNV` = length, null ratio, value distribution) follows the
   SSIS Data Profiling Task XML format and opens in the SSIS Data Profile Viewer.
 

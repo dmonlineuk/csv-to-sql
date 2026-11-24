@@ -4,7 +4,7 @@ using CsvToSql.Core.Import;
 namespace CsvToSql.Cli;
 
 /// <summary>Settings that only affect the command line host.</summary>
-public sealed record HostOptions(bool WaitForKeyPress, string? LogFilename, bool Verbose, bool ReturnRowCount);
+public sealed record HostOptions(bool WaitForKeyPress, string? LogFilename, bool Verbose, bool ReturnRowCount, int MaxConcurrentRuns, int MinFreeMemoryMB);
 
 /// <summary>Maps the legacy command line onto <see cref="ImportOptions"/>.</summary>
 public static class OptionsMapper
@@ -18,7 +18,9 @@ public static class OptionsMapper
             !cl.Switch("ui.waitForKeyPress.no"),
             cl.Value("ui.logger.filename"),
             cl.Switch("ui.logger.verbose"),
-            cl.Switch("dest.return.rowcount"));
+            cl.Switch("dest.return.rowcount"),
+            cl.IntValue("ui.wait.maxConcurrent", Environment.ProcessorCount),
+            cl.IntValue("ui.wait.minFreeMemoryMB", 1024));
     }
 
     /// <summary>Command line mistakes that are tolerated but likely unintended.</summary>

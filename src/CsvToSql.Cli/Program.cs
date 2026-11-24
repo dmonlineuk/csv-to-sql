@@ -63,6 +63,7 @@ internal static class CliApp
                     log.Warn(warning);
                 }
 
+                using var slot = new RunGate { MaxConcurrentRuns = host.MaxConcurrentRuns, MinFreeMemoryMB = host.MinFreeMemoryMB }.Enter(log);
                 log.Info($"Processing file {options.SourceFile}");
                 var result = new CsvImporter(options, log).Run();
                 if (options.DestNone && !options.ProfileOnly)
